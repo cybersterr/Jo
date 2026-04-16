@@ -1,0 +1,64 @@
+name: Fetch and Update M3U
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Convert JSON → M3U
+        env:
+          JSON_URL: ${{ secrets.JSON_URL }}
+        run: |
+          echo "#EXTM3U" > playlist.m3u
+          echo "# Generated: $(date -u)" >> playlist.m3u
+
+          curl -s "$JSON_URL" | jq -c '.[]' | while read -r ch; do
+            name=$(echo "$ch" | jq -r '.name // "Channel"')
+            id=$(echo "$ch" | jq -r '.id // ""')
+            logo=$(echo "$ch" | jq -r '.logo // ""')
+            group=$(echo "$ch" | jq -r '.group // "Other"')
+            url=$(echo "$ch" | jq -r '.mpd_url // .url // ""')
+            license=$(echo "$ch" | jq -r '.license_url // ""')
+            ua=$(echo "$ch" | jq -r '.user_agent // ""')
+            type=$(echo "$ch" | jq -r '.type // ""')
+
+            echo "#EXTINF:-1 tvg-id=\"$id\" tvg-name=\"$name\" tvg-logo=\"$logo\" group-title=\"$group\",$name" >> playlist.m3u
+
+            if [ "$type" = "dash" ]; then
+              echo "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha" >> playlist.m3u
+              echo "#KODIPROP:inputstream.adaptive.license_key=$license" >> playlist.m3u
+            fi
+
+            if [ -n "$ua" ]; then
+              encoded_ua=$(printf '%s' "$ua" | jq -sRr @uri)
+              echo "${url}|User-Agent=${encoded_ua}" >> playlist.m3u
+            else
+              echo "$url" >> playlist.m3u
+            fi
+
+            echo "" >> playlist.m3u
+          done
+
+      - name: Move to output
+        run: |
+          mkdir -p output
+          mv playlist.m3u output/playlist.m3u
+
+      - name: Commit & Push
+        run: |
+          git config --global user.name "m3u-bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add output/playlist.m3u
+          git commit -m "Updated M3U" || echo "No changes"
+          git push
