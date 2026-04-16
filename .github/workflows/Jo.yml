@@ -23,15 +23,23 @@ jobs:
           echo "#EXTM3U" > playlist.m3u
           echo "# Generated: $(date -u)" >> playlist.m3u
 
-          curl -s "$JSON_URL" | jq -c '.[]' | while read -r ch; do
+          echo "Fetching JSON..."
+          curl -L -A "Mozilla/5.0" "$JSON_URL" -o data.json
+
+          echo "Validating JSON..."
+          cat data.json | jq . >/dev/null 2>&1 || { echo "Invalid JSON"; cat data.json; exit 1; }
+
+          jq -c '.[]' data.json | while read -r ch; do
             name=$(echo "$ch" | jq -r '.name // "Channel"')
             id=$(echo "$ch" | jq -r '.id // ""')
             logo=$(echo "$ch" | jq -r '.logo // ""')
             group=$(echo "$ch" | jq -r '.group // "Other"')
-            url=$(echo "$ch" | jq -r '.mpd_url // .url // ""')
+            url=$(echo "$ch" | jq -r '.mpd_url // .url // empty')
             license=$(echo "$ch" | jq -r '.license_url // ""')
             ua=$(echo "$ch" | jq -r '.user_agent // ""')
             type=$(echo "$ch" | jq -r '.type // ""')
+
+            [ -z "$url" ] && continue
 
             echo "#EXTINF:-1 tvg-id=\"$id\" tvg-name=\"$name\" tvg-logo=\"$logo\" group-title=\"$group\",$name" >> playlist.m3u
 
