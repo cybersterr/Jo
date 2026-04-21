@@ -61,7 +61,7 @@ jobs:
       - name: Move to output
         run: |
           mkdir -p output
-          mv playlist.m3u playlist.m3u
+          mv playlist.m3u
 
       - name: Commit & Push
         run: |
